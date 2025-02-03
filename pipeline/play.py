@@ -1,6 +1,7 @@
 """Interact with the env and return records."""
 
 import gymnasium as gym
+import logging
 import random
 from typing import Any, List
 
@@ -8,10 +9,15 @@ from typing import Any, List
 class PlayRecord:
     """A record for one play."""
 
-    rewards: List[float] = []
-    states: List[Any] = []  # Reuse for next state, len(states) = len(rewards) + 1
-    is_terminated: bool = False  # True for meet terminated state, False for truncated.
-    actions: List[Any] = []  # len(actions) + 1 == len(states)
+    def __init__(self):
+        self.rewards: List[float] = []
+        self.states: List[Any] = (
+            []
+        )  # Reuse for next state, len(states) = len(rewards) + 1
+        self.is_terminated: bool = (
+            False  # True for meet terminated state, False for truncated.
+        )
+        self.actions: List[Any] = []  # len(actions) + 1 == len(states)
 
     def append(self, reward, state, action, terminated):
         self.rewards.append(reward)
@@ -23,12 +29,13 @@ class PlayRecord:
 class RecordSamples:
     """Samples for batch learning."""
 
-    states: List[Any] = []
-    actions: List[Any] = []
-    rewards: List[float] = []
-    mc_rewards: List[float] = []
-    next_states: List[Any] = []
-    terminated: List[bool] = []  # Is terminated at next state.
+    def __init__(self):
+        self.states: List[Any] = []
+        self.actions: List[Any] = []
+        self.rewards: List[float] = []
+        self.mc_rewards: List[float] = []
+        self.next_states: List[Any] = []
+        self.terminated: List[bool] = []  # Is terminated at next state.
 
     def __len__(self) -> int:
         return len(self.rewards)
@@ -37,8 +44,12 @@ class RecordSamples:
 class ReplayRecords:
     """A storage for records from plays."""
 
-    records: List[PlayRecord] = []
-    max_capacity: int = 500
+    def __init__(self):
+        self.records: List[PlayRecord] = []
+        self.max_capacity: int = 500
+
+    def clear(self):
+        self.records.clear()
 
     def receive_play_record(self, play_record: PlayRecord):
         self.records.append(play_record)
@@ -65,6 +76,7 @@ class ReplayRecords:
                 mc_rewards = [0] * len(record.rewards)
                 acc_r = 0 if record.is_terminated else non_terminated_init_reward
                 for j in range(len(record.rewards) - 1, -1, -1):
+                    acc_r *= gamma
                     acc_r += record.rewards[j]
                     mc_rewards[j] = acc_r
                 samples.mc_rewards += mc_rewards
@@ -77,7 +89,7 @@ class ReplayRecords:
 
 def play(env: gym.Env, action_fn: callable) -> PlayRecord:
     record = PlayRecord()
-    record.states.append(env.reset())
+    record.states.append(env.reset()[0])
     while True:
         action = action_fn(record.states[-1])
         new_state, reward, terminated, truncated, _ = env.step(action)
@@ -91,7 +103,7 @@ def _test_play():
     env = gym.make("Ant", render_mode="human")
     action_fn = lambda s: env.action_space.sample()
     records = ReplayRecords()
-    for t in range(3):
+    for _ in range(3):
         records.receive_play_record(play(env, action_fn))
     samples = records.sample(batch_size=20)
     print(len(samples))
